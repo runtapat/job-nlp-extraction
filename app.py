@@ -1,9 +1,8 @@
-
 # -*- coding: utf-8 -*-
 """
 ระบบสกัดข้อมูลประกาศรับสมัครงาน (Job Posting Information Extraction System)
 วิชา NLP - แบบทดสอบเก็บคะแนน ครั้งที่ 1 (ข้อ 2)
- 
+
 เทคนิคที่ใช้:
 1. Regex & Cleansing        -> ลบเบอร์โทร, ลิงก์, อีเมล (Noise / ข้อมูลอ่อนไหว)
 2. Tokenization & Normalization -> ตัดคำภาษาไทยด้วย pythainlp, ลบ Stopwords
@@ -11,15 +10,15 @@
 4. POS & NER                -> POS Tagging (pythainlp) + Rule-based Entity Extraction
                                 (ตำแหน่งงาน, บริษัท, เงินเดือน, สถานที่, ทักษะ)
 """
- 
+
 import re
 import pandas as pd
 import streamlit as st
- 
+
 from pythainlp.tokenize import word_tokenize
 from pythainlp.corpus import thai_stopwords
 from pythainlp.tag import pos_tag
- 
+
 # ---------------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------------
@@ -28,108 +27,189 @@ st.set_page_config(
     page_icon="🧑‍💼",
     layout="wide",
 )
- 
+
 # ---------------------------------------------------------------------------
 # CUSTOM STYLE
 # ---------------------------------------------------------------------------
 st.markdown(
     """
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        .stApp {
-            background: linear-gradient(180deg, #f7f9fc 0%, #ffffff 250px);
+        html, body, [class*="css"] {
+            font-family: 'Kanit', 'Inter', sans-serif;
         }
+
+        .stApp {
+            background: #0f1220;
+        }
+        .main .block-container {
+            max-width: 1100px;
+            padding-top: 1.5rem;
+        }
+
+        /* ---------- Hero ---------- */
         .hero-box {
-            background: linear-gradient(120deg, #4f46e5 0%, #7c3aed 55%, #ec4899 100%);
-            padding: 2rem 2.2rem;
-            border-radius: 18px;
+            background: radial-gradient(circle at 15% 20%, #6d28d9 0%, #1e1b4b 55%, #0f1220 100%);
+            padding: 2.4rem 2.6rem;
+            border-radius: 22px;
             color: white;
-            margin-bottom: 1.4rem;
-            box-shadow: 0 10px 30px rgba(79, 70, 229, 0.25);
+            margin-bottom: 1.8rem;
+            border: 1px solid rgba(255,255,255,0.08);
         }
         .hero-box h1 {
-            color: white !important;
-            font-size: 1.9rem;
-            margin-bottom: 0.3rem;
+            color: #ffffff !important;
+            font-size: 2.1rem;
+            font-weight: 700;
+            margin-bottom: 0.4rem;
         }
         .hero-box p {
-            color: #ede9fe;
-            font-size: 0.98rem;
-            margin: 0;
+            color: #c7c9f2;
+            font-size: 1rem;
+            margin: 0 0 0.9rem 0;
         }
         .badge-row span {
             display: inline-block;
-            background: rgba(255,255,255,0.18);
-            border: 1px solid rgba(255,255,255,0.35);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
             border-radius: 999px;
-            padding: 3px 12px;
-            margin: 4px 6px 0 0;
-            font-size: 0.78rem;
+            padding: 5px 14px;
+            margin: 4px 8px 0 0;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #e5e5ff;
         }
-        div[data-testid="stMetric"] {
-            background: #ffffff;
-            border: 1px solid #ece9f9;
-            border-radius: 14px;
-            padding: 0.9rem 0.8rem 0.5rem 0.8rem;
-            box-shadow: 0 2px 10px rgba(79, 70, 229, 0.06);
+
+        /* ---------- General text on dark bg ---------- */
+        h1, h2, h3, h4, p, label, .stMarkdown, .stCaption {
+            color: #e8e8f5 !important;
         }
+        .stTextArea textarea {
+            background: #171a2e !important;
+            color: #f1f1fa !important;
+            border: 1px solid #2c2f4a !important;
+            border-radius: 12px !important;
+            font-family: 'Kanit', sans-serif;
+        }
+
+        /* ---------- Result cards ---------- */
         .result-card {
-            background: #ffffff;
-            border: 1px solid #ece9f9;
-            border-radius: 16px;
-            padding: 1.3rem 1.5rem;
-            box-shadow: 0 4px 18px rgba(79, 70, 229, 0.08);
-            margin-bottom: 0.8rem;
+            background: linear-gradient(160deg, #191c33 0%, #14162a 100%);
+            border: 1px solid #2c2f4a;
+            border-left: 4px solid #a855f7;
+            border-radius: 14px;
+            padding: 1.1rem 1.3rem;
+            margin-bottom: 1rem;
+            min-height: 92px;
         }
         .result-card .label {
-            font-size: 0.8rem;
-            color: #8b8fa3;
+            font-size: 0.78rem;
+            color: #9d9fc9;
             font-weight: 600;
-            letter-spacing: .02em;
+            letter-spacing: .03em;
+            text-transform: uppercase;
         }
         .result-card .value {
-            font-size: 1.05rem;
-            color: #1f2233;
+            font-size: 1.08rem;
+            color: #ffffff !important;
             font-weight: 600;
-            margin-top: 2px;
+            margin-top: 4px;
+            line-height: 1.4;
         }
         .skill-chip {
             display: inline-block;
-            background: #eef2ff;
-            color: #4338ca;
+            background: rgba(168, 85, 247, 0.15);
+            color: #d8b4fe !important;
+            border: 1px solid rgba(168, 85, 247, 0.4);
             border-radius: 999px;
             padding: 4px 12px;
             margin: 3px 6px 0 0;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 600;
         }
         .topic-chip {
             display: inline-block;
-            background: linear-gradient(120deg, #ec4899, #7c3aed);
-            color: white;
+            background: linear-gradient(120deg, #ec4899, #a855f7);
+            color: white !important;
             border-radius: 999px;
-            padding: 5px 16px;
-            font-size: 0.9rem;
+            padding: 6px 18px;
+            font-size: 0.92rem;
             font-weight: 700;
         }
+
+        /* ---------- Sidebar ---------- */
         section[data-testid="stSidebar"] {
-            background: #f5f4ff;
+            background: #14162a;
+            border-right: 1px solid #2c2f4a;
         }
+        section[data-testid="stSidebar"] * {
+            color: #d8d9f0 !important;
+        }
+
+        /* ---------- Tabs ---------- */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 6px;
+            gap: 8px;
+            border-bottom: 1px solid #2c2f4a;
         }
         .stTabs [data-baseweb="tab"] {
-            background: #f5f4ff;
+            background: #171a2e;
+            border: 1px solid #2c2f4a;
+            border-bottom: none;
             border-radius: 10px 10px 0 0;
-            padding: 8px 18px;
+            padding: 10px 22px;
             font-weight: 600;
+            color: #b7b9de !important;
+        }
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(120deg, #7c3aed, #a855f7) !important;
+            color: white !important;
+        }
+        .stTabs [aria-selected="true"] p {
+            color: white !important;
+        }
+
+        /* ---------- Buttons ---------- */
+        .stButton button {
+            background: linear-gradient(120deg, #7c3aed, #ec4899);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            padding: 0.6rem 1.2rem;
+            box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
+        }
+        .stButton button:hover {
+            filter: brightness(1.1);
+        }
+
+        /* ---------- Expander ---------- */
+        .streamlit-expanderHeader, details summary {
+            background: #171a2e !important;
+            border-radius: 10px !important;
+            color: #e8e8f5 !important;
+        }
+        details {
+            background: #14162a;
+            border: 1px solid #2c2f4a;
+            border-radius: 10px;
+            margin-bottom: 0.6rem;
+        }
+
+        /* ---------- Dataframe / file uploader ---------- */
+        [data-testid="stFileUploaderDropzone"] {
+            background: #171a2e;
+            border: 1px dashed #4c4f7a;
+            border-radius: 12px;
+        }
+        div[data-testid="stAlert"] {
+            border-radius: 10px;
         }
     </style>
     """,
     unsafe_allow_html=True,
 )
- 
+
 STOPWORDS = set(thai_stopwords())
- 
+
 PROVINCES = [
     "กรุงเทพมหานคร", "กรุงเทพฯ", "กรุงเทพ", "นนทบุรี", "ปทุมธานี", "สมุทรปราการ",
     "สมุทรสาคร", "นครปฐม", "ชลบุรี", "ระยอง", "เชียงใหม่", "เชียงราย", "ขอนแก่น",
@@ -140,7 +220,7 @@ PROVINCES = [
     "บางกะปิ", "คลองเตย", "ปทุมวัน", "ราชเทวี", "พระโขนง", "บางขุนเทียน",
     "Bangkok", "Chonburi", "Chiang Mai", "Rayong", "Nonthaburi",
 ]
- 
+
 SKILL_KEYWORDS = [
     # ภาษาโปรแกรม / IT
     "Python", "Java", "JavaScript", "SQL", "PHP", "C++", "React", "Node.js",
@@ -151,7 +231,7 @@ SKILL_KEYWORDS = [
     "การตลาด", "บัญชี", "การเงิน", "ลูกค้าสัมพันธ์", "การขาย", "เจรจาต่อรอง",
     "บริหารทีม", "วางแผนงาน", "ขับรถได้", "ทำงานภายใต้แรงกดดันได้",
 ]
- 
+
 CATEGORY_KEYWORDS = {
     "IT / Software": ["โปรแกรมเมอร์", "Developer", "Software", "IT", "SQL", "Python",
                        "Java", "โค้ด", "ระบบ", "Programmer", "Network", "System"],
@@ -169,32 +249,32 @@ CATEGORY_KEYWORDS = {
     "บริการลูกค้า (Customer Service)": ["Call Center", "บริการลูกค้า", "Customer Service",
                                           "รับเรื่องร้องเรียน", "Support"],
 }
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # STEP 1: Regex & Cleansing
 # ---------------------------------------------------------------------------
 def clean_text(text: str):
     """ลบลิงก์, อีเมล, เบอร์โทร (Noise / PII) และช่องว่างเกิน"""
     removed = {}
- 
+
     urls = re.findall(r"https?://\S+|www\.\S+", text)
     text = re.sub(r"https?://\S+|www\.\S+", " ", text)
- 
+
     emails = re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", text)
     text = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", " ", text)
- 
+
     phones = re.findall(r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{3,4}", text)
     text = re.sub(r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{3,4}", " ", text)
- 
+
     text = re.sub(r"\s+", " ", text).strip()
- 
+
     removed["ลิงก์ (URLs)"] = urls
     removed["อีเมล"] = emails
     removed["เบอร์โทรศัพท์"] = phones
     return text, removed
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # STEP 2: Tokenization & Normalization
 # ---------------------------------------------------------------------------
@@ -202,8 +282,8 @@ def tokenize_and_normalize(text: str):
     tokens = word_tokenize(text, engine="newmm")
     tokens = [t.strip() for t in tokens if t.strip() and t.strip() not in STOPWORDS]
     return tokens
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # STEP 3: Topic Identification
 # ---------------------------------------------------------------------------
@@ -216,8 +296,8 @@ def identify_topic(text: str):
     if scores[best] == 0:
         return "อื่นๆ (Other)", scores
     return best, scores
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # STEP 4: POS & Rule-based NER
 # ---------------------------------------------------------------------------
@@ -234,11 +314,11 @@ def extract_salary(text: str) -> str:
         if m:
             return m.group(0).strip()
     return "ไม่พบข้อมูล"
- 
- 
+
+
 POSITION_STOP_WORDS = r"(?:ประจำ|เงินเดือน|สาขา|จังหวัด|ที่|บริษัท|ต้องการ|รับสมัคร|โทร|ติดต่อ|Salary|Location|Requirements?|Company)"
- 
- 
+
+
 def extract_position(text: str) -> str:
     m = re.search(
         r"ตำแหน่ง[:\s]*([A-Za-zก-๙0-9\s]{2,40}?)(?=\s+" + POSITION_STOP_WORDS + r"|[,\.]|$)",
@@ -254,8 +334,8 @@ def extract_position(text: str) -> str:
     if m and m.group(1).strip():
         return m.group(1).strip()
     return "ไม่พบข้อมูล"
- 
- 
+
+
 def extract_company(text: str) -> str:
     m = re.search(r"บริษัท\s*([^\n,\.]{2,40}?)\s*จำกัด", text)
     if m:
@@ -264,14 +344,14 @@ def extract_company(text: str) -> str:
     if m:
         return m.group(1).strip()
     return "ไม่พบข้อมูล"
- 
- 
+
+
 def extract_location(text: str) -> str:
     found = [p for p in PROVINCES if p in text]
     found = list(dict.fromkeys(found))  # unique, keep order
     return ", ".join(found) if found else "ไม่พบข้อมูล"
- 
- 
+
+
 def extract_skills(text: str) -> str:
     """ใช้ word boundary (\\b) สำหรับคำภาษาอังกฤษ เพื่อกันปัญหาคำซ้อนกัน เช่น
     'Java' ที่เป็นส่วนหนึ่งของ 'JavaScript' ส่วนคำภาษาไทยใช้ substring match
@@ -285,8 +365,8 @@ def extract_skills(text: str) -> str:
             if s in text:
                 found.append(s)
     return ", ".join(found) if found else "ไม่พบข้อมูล"
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Pipeline รวมทุกขั้นตอน
 # ---------------------------------------------------------------------------
@@ -294,12 +374,12 @@ def process_text(raw_text: str):
     cleaned, removed = clean_text(raw_text)
     tokens = tokenize_and_normalize(cleaned)
     topic, scores = identify_topic(cleaned)
- 
+
     try:
         tags = pos_tag(tokens, engine="perceptron", corpus="orchid") if tokens else []
     except Exception:
         tags = []
- 
+
     result = {
         "ตำแหน่งงาน": extract_position(cleaned),
         "บริษัท": extract_company(cleaned),
@@ -309,8 +389,8 @@ def process_text(raw_text: str):
         "หมวดหมู่งาน": topic,
     }
     return result, cleaned, tokens, tags, removed, scores
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
@@ -329,7 +409,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
- 
+
 with st.sidebar:
     st.markdown("### 📌 เกี่ยวกับระบบ")
     st.write(
@@ -346,9 +426,9 @@ with st.sidebar:
     )
     st.markdown("---")
     st.caption("จัดทำเพื่อการศึกษา รายวิชา NLP")
- 
+
 tab1, tab2 = st.tabs(["📝  ทดลองข้อความเดียว", "📂  ประมวลผลไฟล์ (หลายประกาศ)"])
- 
+
 # ---------------- TAB 1: single text ----------------
 with tab1:
     sample_text = (
@@ -358,21 +438,21 @@ with tab1:
         "สนใจติดต่อ 081-234-5678 หรืออีเมล hr@thsmarttech.com "
         "ดูรายละเอียดเพิ่มเติมที่ https://thsmarttech.com/careers"
     )
- 
+
     text_input = st.text_area(
         "วางข้อความประกาศรับสมัครงาน (ไทย/อังกฤษ)",
         value=sample_text,
         height=180,
     )
- 
+
     if st.button("🔍 ประมวลผล", type="primary", use_container_width=True):
         if not text_input.strip():
             st.warning("กรุณาใส่ข้อความก่อนประมวลผล")
         else:
             result, cleaned, tokens, tags, removed, scores = process_text(text_input)
- 
+
             st.markdown("### ✅ ผลลัพธ์การสกัดข้อมูล")
- 
+
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.markdown(
@@ -412,27 +492,27 @@ with tab1:
                     <div class="value"><span class="topic-chip">{result['หมวดหมู่งาน']}</span></div></div>""",
                     unsafe_allow_html=True,
                 )
- 
+
             st.markdown("")
             with st.expander("🧹 ขั้นตอนที่ 1: Regex & Cleansing (ข้อมูลที่ถูกลบออก)"):
                 for k, v in removed.items():
                     st.write(f"**{k}:** {v if v else '- ไม่พบ -'}")
                 st.write("**ข้อความหลังทำความสะอาด:**")
                 st.info(cleaned)
- 
+
             with st.expander("✂️ ขั้นตอนที่ 2: Tokenization & Normalization"):
                 st.write(f"จำนวนคำหลังตัดคำและลบ Stopwords: {len(tokens)}")
                 st.write(tokens)
- 
+
             with st.expander("🗂️ ขั้นตอนที่ 3: Topic Identification (คะแนนแต่ละหมวดหมู่)"):
                 st.bar_chart(pd.Series(scores))
- 
+
             with st.expander("🏷️ ขั้นตอนที่ 4: POS Tagging"):
                 if tags:
                     st.dataframe(pd.DataFrame(tags, columns=["คำ", "POS Tag"]), use_container_width=True)
                 else:
                     st.write("ไม่มีข้อมูลคำสำหรับติด POS Tag")
- 
+
 # ---------------- TAB 2: batch file ----------------
 with tab2:
     st.write(
@@ -440,7 +520,7 @@ with tab2:
         "หรือใช้ไฟล์ตัวอย่าง `sample_data.csv` ที่แนบมากับโปรเจกต์นี้"
     )
     uploaded = st.file_uploader("อัปโหลดไฟล์ CSV", type=["csv"])
- 
+
     if uploaded is not None:
         df_in = pd.read_csv(uploaded)
         if "text" not in df_in.columns:
@@ -462,7 +542,7 @@ with tab2:
                     file_name="job_extraction_results.csv",
                     mime="text/csv",
                 )
- 
+
 st.divider()
 st.markdown(
     "<p style='text-align:center; color:#9ca3af; font-size:0.85rem;'>"
